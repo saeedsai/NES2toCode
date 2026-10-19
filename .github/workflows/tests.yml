@@ -1,0 +1,39 @@
+name: NES2toCode CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Python and C regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python automated tests
+        run: python -m unittest discover -s tests -v
+      - name: Generate synthetic NES ROM
+        run: python examples/make_demo_rom.py
+      - name: Reverse engineer synthetic ROM
+        run: python -m nesrev examples/synthetic_demo.nes --out recovered --individual-tiles
+      - name: Verify byte-perfect original/reconstructed ROM
+        run: cmp examples/synthetic_demo.nes recovered/reconstructed.nes
+      - name: Compile and run generated C probe
+        run: |
+          cd recovered/c_source
+          cc -std=c99 -O2 -Wall -Wextra -Werror recovered_data.c recovered_instructions.c lifted_code.c nes_runtime.c probe_main.c -o cpu_probe
+          ./cpu_probe 20 | tee cpu_result.txt
+          grep -F 'RAM[0002]=$42' cpu_result.txt
+      - name: Validate HTML is rejected
+        run: |
+          printf '<!doctype html><html><body>Not a ROM</body></html>' > invalid.html
+          if python -m nesrev invalid.html --out bad_output 2> bad_error.txt; then
+            echo "ERROR: HTML unexpectedly accepted" >&2
+            exit 1
+          fi
+          grep -F 'HTML document supplied' bad_error.txt
