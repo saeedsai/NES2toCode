@@ -26,7 +26,7 @@ uint32_t nes_rom_offset(const NesMachine *m, uint16_t addr) {
   }
   if (NES_MAPPER == 2 && size >= 32768 && size % 16384 == 0) {
     uint32_t count = size / 16384;
-    uint32_t bank = addr >= 0xc000 ? count-1 : (m->selected_prg_bank % (count-1));
+    uint32_t bank = addr >= 0xc000 ? count-1 : (m->selected_prg_bank % count);
     return bank * 16384 + (addr & 0x3fff);
   }
   return UINT32_MAX;

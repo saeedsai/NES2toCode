@@ -73,7 +73,7 @@ class Analyzer:
             if pc is not None and pc >= 0x8000:
                 self.entry_points.append(dict(vector=name, cpu_address=pc))
                 if self.cart.mapper == 2 and pc < 0xc000:
-                    pending.extend((pc, bank) for bank in range(len(self.cart.prg_banks)-1))
+                    pending.extend((pc, bank) for bank in range(len(self.cart.prg_banks)))
                 else:
                     pending.append((pc, 0))
         seen = set()
@@ -112,13 +112,13 @@ class Analyzer:
                     continue
                 dest = raw[1] | (raw[2] << 8)
                 if self.cart.mapper == 2 and dest < 0xc000 and dest >= 0x8000 and pc >= 0xc000:
-                    pending.extend((dest, b) for b in range(len(self.cart.prg_banks)-1))
+                    pending.extend((dest, b) for b in range(len(self.cart.prg_banks)))
                 else:
                     pending.append((dest, low_bank))
             elif mnemonic == 'JSR':
                 dest = raw[1] | (raw[2] << 8)
                 if self.cart.mapper == 2 and 0x8000 <= dest < 0xc000 and pc >= 0xc000:
-                    pending.extend((dest, b) for b in range(len(self.cart.prg_banks)-1))
+                    pending.extend((dest, b) for b in range(len(self.cart.prg_banks)))
                 else:
                     pending.append((dest, low_bank))
                 pending.append((next_pc, low_bank))

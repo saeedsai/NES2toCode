@@ -26,7 +26,7 @@
       if (a<0x8000 || !this.supported) return -1;
       if (this.mapper===2) {
         const banks=this.prg.length/16384;
-        const bank=a>=0xc000?banks-1:this.selectedPrg%(banks-1);
+        const bank=a>=0xc000?banks-1:this.selectedPrg%banks;
         return bank*16384+(a&0x3fff);
       }
       return this.prg.length===16384?((a-0x8000)&0x3fff):a-0x8000;

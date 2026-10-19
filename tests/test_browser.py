@@ -71,6 +71,31 @@ class BrowserTests(unittest.TestCase):
             self.assertEqual(s['steps'],5)
             self.assertEqual(s['pc'],0x8004)
 
+    def test_mapper2_can_select_final_bank_in_lower_window(self):
+        cart=rom(bytes([0xa9,0x42]),mapper=2)
+        with tempfile.TemporaryDirectory() as d:
+            out=Path(d)/'browser'
+            export_browser(cart,out)
+            data=self.node(out, "m.write(0x8000,2);console.log(JSON.stringify({lower:m.read(0x8000),upper:m.read(0xc000)}));")
+            self.assertEqual(data,{'lower':0xa9,'upper':0xa9})
+
+    @unittest.skipUnless(shutil.which('cc'), 'C compiler not installed')
+    def test_mapper2_c_runtime_can_select_final_bank(self):
+        from nesrev.exporter import export_rom
+        with tempfile.TemporaryDirectory() as d:
+            source=Path(d)/'c_source'
+            export_rom(rom(bytes([0xa9,0x42]),mapper=2),Path(d))
+            harness=source/'check_bank.c'
+            harness.write_text('#include "nes_runtime.h"\n'
+                               'int main(void) { NesMachine m; if(nes_reset(&m))return 1; '
+                               'nes_write(&m,0x8000,2); '
+                               'return nes_read(&m,0x8000)==0xa9 ? 0 : 2; }\n')
+            exe=source/'check_bank'
+            subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror',
+                            str(source/'recovered_data.c'),str(source/'nes_runtime.c'),
+                            str(harness),'-o',str(exe)],check=True,capture_output=True,text=True)
+            subprocess.run([str(exe)],check=True,capture_output=True,text=True)
+
     def test_unsupported_mapper_and_chr_ram(self):
         with tempfile.TemporaryDirectory() as d:
             out=Path(d)/'browser'
