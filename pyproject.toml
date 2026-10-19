@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "nes-rom-reverser"
+version = "0.1.0"
+description = "Lossless iNES/NES 2.0 extractor, conservative 6502 C lifting scaffold and CHR tile decoder"
+requires-python = ">=3.9"
+[tool.setuptools.package-data]
+nesrev = ["templates/*"]
+[project.scripts]
+nes-reverse = "nesrev.__main__:main"
