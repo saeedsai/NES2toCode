@@ -157,3 +157,25 @@ are conservative candidates and the generated C program is CPU-only. Mapper 4
 (MMC3), used by a number of larger games, is currently **raw extraction only**;
 its dynamically banked CPU execution cannot be considered converted or verified.
 The HTML match simulation is a separate JavaScript prototype, not machine code.
+
+## Controller and external interrupt diagnostic hooks (2026-10-19)
+
+The CPU-only C and JavaScript runtimes now implement basic standard NES controller serial input:
+$4016/$4017 strobe/latch, two ports, eight ordered button bits and ones after eight reads.
+The generated HTML workbench has keyboard (arrows, Z/X, Enter, Shift) and eight touch/pointer buttons.
+
+The runtimes can **manually inject** interrupts. JavaScript: `machine.requestNMI()`
+and `machine.setIRQLine(true|false)`. C: `nes_request_nmi(&machine)` and
+`nes_set_irq_line(&machine, asserted)`. At instruction boundaries, NMI has
+priority; IRQ is level-sensitive and blocked when I=1; hardware interrupts push
+PC and B-cleared status, set I, load the vector and return through RTI.
+C generated `nes_lifted_step` and `nes_step_dynamic` both service these hooks.
+
+**No real PPU vblank/NMI or APU/MMC3 IRQ generation, CPU cycle timing, DMA,
+frame renderer or audio exists yet.** One interrupt service counts as a diagnostic
+step, not seven hardware CPU cycles. These hooks do not make games playable.
+
+Run tests: `python -m unittest discover -s tests -v`.
+Optional real browser input smoke (requires Playwright + Chromium):
+`NES2TOCODE_CHROMIUM=/usr/bin/chromium python -m tools.browser_smoke`.
+See `docs/CONTROLLER_INTERRUPTS_2026-10-19.md`.

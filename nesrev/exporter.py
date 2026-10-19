@@ -110,6 +110,7 @@ def export_rom(cart, output_dir, scale=2, individual_tiles=False):
     dispatch = ['/* Low-level 6502-to-C lifting. Executes CPU instructions only. */\n',
                 '#include "nes_runtime.h"\n#include <stdint.h>\n\n',
                 'int nes_step_dynamic(NesMachine *m) {\n',
+                '  if (nes_service_interrupt(m)) return 0;\n',
                 '  switch (nes_read(m, m->cpu.pc)) {\n']
     for opcode, (op, mode, width) in sorted(OPCODES.items()):
         dispatch.append(f'    case 0x{opcode:02x}: return nes_execute(m, OP_{op}, AM_{mode.upper()});\n')
@@ -122,6 +123,7 @@ def export_rom(cart, output_dir, scale=2, individual_tiles=False):
     if not entries:
         dispatch.append('    {0, OP_NOP, AM_IMP}, /* no recovered instructions */\n')
     dispatch.append('};\n\nint nes_lifted_step(NesMachine *m) {\n'
+                    '  if (nes_service_interrupt(m)) return 0;\n'
                     '  uint32_t rom_off = nes_rom_offset(m, m->cpu.pc);\n'
                     '  const size_t hi_count='+str(len(entries))+';\n'
                     '  size_t lo=0, hi=hi_count;\n'
@@ -145,7 +147,7 @@ def export_rom(cart, output_dir, scale=2, individual_tiles=False):
            'and models CPU RAM, cartridge PRG mapping for mappers 0/2/3 and SRAM. '
            'The `probe_main.c` harness runs CPU steps and prints registers.\n\n'
            '**Not a playable game:** This runtime lacks a real PPU renderer, APU sound, '
-           'joypad input, DMA, timing, raster IRQ, mapper edge cases, unofficial opcodes, '
+           'full gamepad/peripheral support, DMA, timed PPU/APU-generated interrupts, mapper edge cases, unofficial opcodes, '
            'and game-specific decoding. It does NOT restore the original functions, names, '
            'game design source, music score, sprite animations or tile maps. '
            'It is a low-level CPU analysis scaffold.\n\n'

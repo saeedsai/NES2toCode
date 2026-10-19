@@ -32,9 +32,38 @@
     document.getElementById('prev').disabled=page===0;
     document.getElementById('next').disabled=(page+1)*256>=totalTiles;
   }
+  // Browser input updates the controller's live state; $4016 strobe controls latching.
+  const buttonBits={A:1,B:2,Select:4,Start:8,Up:16,Down:32,Left:64,Right:128};
+  const keyMap={ArrowUp:'Up',ArrowDown:'Down',ArrowLeft:'Left',ArrowRight:'Right',
+    KeyZ:'A',KeyX:'B',Enter:'Start',ShiftLeft:'Select',ShiftRight:'Select'};
+  const keys=new Set(), pointers=new Set();
+  function updatePad() {
+    let mask=0;
+    for(const b of keys) mask|=buttonBits[b];
+    for(const b of pointers) mask|=buttonBits[b];
+    m.setController(0,mask);
+  }
+  if(typeof window!=='undefined' && window.addEventListener) {
+    window.addEventListener('keydown',e=>{const b=keyMap[e.code];if(!b)return;
+      keys.add(b);updatePad();e.preventDefault();});
+    window.addEventListener('keyup',e=>{const b=keyMap[e.code];if(!b)return;
+      keys.delete(b);updatePad();e.preventDefault();});
+    window.addEventListener('blur',()=>{keys.clear();pointers.clear();updatePad();});
+  }
+  if(typeof document.querySelectorAll==='function') {
+    for(const b of document.querySelectorAll('button[data-pad]')) {
+      const name=b.dataset.pad;
+      b.addEventListener('pointerdown',e=>{pointers.add(name);b.classList.add('pressed');
+        if(b.setPointerCapture)b.setPointerCapture(e.pointerId);updatePad();e.preventDefault();});
+      const release=()=>{pointers.delete(name);b.classList.remove('pressed');updatePad();};
+      b.addEventListener('pointerup',release);
+      b.addEventListener('pointercancel',release);
+      b.addEventListener('lostpointercapture',release);
+    }
+  }
   document.getElementById('step').onclick=()=>{m.step();render();};
   document.getElementById('run').onclick=()=>{m.run(1000);render();};
-  document.getElementById('reset').onclick=()=>{m.reset();render();};
+  document.getElementById('reset').onclick=()=>{m.reset();updatePad();render();};
   document.getElementById('prev').onclick=()=>{page--;draw();};
   document.getElementById('next').onclick=()=>{page++;draw();};
   document.getElementById('tiles').hidden=totalTiles===0;

@@ -1,5 +1,5 @@
 /* NES2toCode generated JavaScript CPU workbench.
- * CPU semantics are experimental, not cycle-accurate; PPU/APU and gamepad are stubs.
+ * CPU semantics are experimental, not cycle-accurate; PPU/APU, DMA and frame timing are stubs; controller serial input and externally injected interrupts are diagnostic-only.
  * Do not describe this diagnostic as a playable ROM-to-HTML conversion. */
 (function (root) {
   'use strict';
@@ -16,6 +16,11 @@
       this.prg=bytes(payload.prg);
       this.chr=bytes(payload.chr);
       this.trainer=bytes(payload.trainer);
+      // Controller bit order: A, B, Select, Start, Up, Down, Left, Right.
+      this.controllers=new Uint8Array(2);
+      this.controllerShift=new Uint8Array(2);
+      this.controllerReads=new Uint8Array(2);
+      this.controllerStrobe=0;
       this.supported=[0,2,3].includes(this.mapper) &&
         (((this.mapper===0||this.mapper===3)&&[16384,32768].includes(this.prg.length)) ||
         (this.mapper===2 && this.prg.length>=32768 && this.prg.length%16384===0));
@@ -31,10 +36,28 @@
       }
       return this.prg.length===16384?((a-0x8000)&0x3fff):a-0x8000;
     }
+    setController(port, buttons) {
+      if (!Number.isInteger(port) || port<0 || port>1) throw RangeError('Controller port must be 0 or 1');
+      this.controllers[port]=buttons&255;
+      if(this.controllerStrobe) this.latchControllers();
+    }
+    latchControllers() {
+      this.controllerShift.set(this.controllers);
+      this.controllerReads.fill(0);
+    }
+    readController(port) {
+      if(this.controllerStrobe) return this.controllers[port]&1;
+      if(this.controllerReads[port]>=8) return 1;
+      const bit=this.controllerShift[port]&1;
+      this.controllerShift[port]>>=1;
+      this.controllerReads[port]++;
+      return bit;
+    }
     read(a) {
       a &= 65535;
       if (a<0x2000) return this.ram[a&0x7ff];
       if (a<0x4000) { this.ppuAccesses++; return 0; }
+      if (a===0x4016 || a===0x4017) { this.apuAccesses++; return this.readController(a-0x4016); }
       if (a<0x4020) { this.apuAccesses++; return this.io[a&31]; }
       if (a>=0x6000 && a<0x8000) return this.sram[a-0x6000];
       if (a>=0x8000) { const off=this.romOffset(a);return off>=0&&off<this.prg.length?this.prg[off]:255; }
@@ -44,6 +67,14 @@
       a &= 65535; v &= 255;
       if (a<0x2000) {this.ram[a&0x7ff]=v;return;}
       if (a<0x4000) {this.ppuAccesses++;return;}
+      if (a===0x4016) {
+        this.apuAccesses++;
+        this.io[a&31]=v;
+        const previous=this.controllerStrobe;
+        this.controllerStrobe=v&1;
+        if(this.controllerStrobe || previous) this.latchControllers();
+        return;
+      }
       if (a<0x4020) {this.apuAccesses++;this.io[a&31]=v;return;}
       if (a>=0x6000&&a<0x8000) {this.sram[a-0x6000]=v;return;}
       if (a>=0x8000&&this.mapper===2) this.selectedPrg=v;
@@ -55,11 +86,29 @@
       this.io=new Uint8Array(32);
       if (this.trainer.length===512) this.sram.set(this.trainer,0x1000);
       this.selectedPrg=0;this.selectedChr=0;this.ppuAccesses=0;this.apuAccesses=0;
+      this.controllerStrobe=0;this.latchControllers();
+      this.nmiPending=false;this.irqLine=false;
       this.a=0;this.x=0;this.y=0;this.sp=0xfd;this.p=F.I|F.U;this.steps=0;
       this.halted=!this.supported;
       this.error=this.supported?'':`Mapper ${this.mapper} unsupported by JavaScript CPU workbench`;
       this.pc=this.supported?(this.read(0xfffc)|(this.read(0xfffd)<<8)):0;
       return this;
+    }
+    // External interrupt injection is diagnostic-only until a timed PPU/APU exists.
+    requestNMI() { this.nmiPending=true; }
+    setIRQLine(asserted) { this.irqLine=!!asserted; }
+    serviceInterrupt() {
+      const nmi=this.nmiPending;
+      if(!nmi && (!this.irqLine || (this.p&F.I))) return false;
+      if(nmi) this.nmiPending=false;
+      this.push(this.pc>>8);
+      this.push(this.pc&255);
+      this.push((this.p&~F.B)|F.U);
+      this.p=(this.p|F.I|F.U)&~F.B;
+      const vector=nmi?0xfffa:0xfffe;
+      this.pc=this.read(vector)|(this.read(vector+1)<<8);
+      this.steps++;
+      return true;
     }
     fetch() {const v=this.read(this.pc);this.pc=(this.pc+1)&65535;return v;}
     word() {const lo=this.fetch();return lo|(this.fetch()<<8);}
@@ -93,6 +142,7 @@
     }
     step() {
       if(this.halted)return false;
+      if(this.serviceInterrupt())return true;
       const oldpc=this.pc, opcode=this.fetch(), entry=OPCODES[opcode];
       if(!entry){this.halted=true;this.error=`Unsupported opcode $${opcode.toString(16).padStart(2,'0')} at $${oldpc.toString(16).padStart(4,'0')}`;return false;}
       const [op,mode]=entry, ea=this.address(mode);

@@ -29,16 +29,25 @@ def export_browser(cart, out: Path):
 <title>NES2toCode — CPU/CHR Analysis Workbench</title>
 <style>body{font:16px system-ui;background:#101c2a;color:#e6eef3;max-width:1000px;margin:auto;padding:22px}
 button{padding:10px 14px;margin:4px;background:#294563;color:white;border:1px solid #688ba8;border-radius:6px;cursor:pointer}
-button:disabled{opacity:.4}pre{background:#18283b;padding:16px;overflow:auto;white-space:pre-wrap}
+button:disabled{opacity:.4}button[data-pad]{touch-action:none;user-select:none;min-width:54px}
+button[data-pad].pressed{background:#387c48;border-color:#a0edb2}pre{background:#18283b;padding:16px;overflow:auto;white-space:pre-wrap}
 canvas{width:min(100%,512px);height:auto;image-rendering:pixelated;border:1px solid #60798c}
 .notice{border-left:3px solid #ffce70;padding:10px 14px;background:#2b2b35}</style></head><body>
 <h1>NES2toCode — CPU/CHR Analysis Workbench</h1>
 <p class="notice"><b>NOT PLAYABLE.</b> This runs official 6502 instruction semantics for select mappers with
-placeholder CPU I/O. It does NOT emulate the NES PPU, APU, rendering, audio, input, IRQ timing,
+placeholder PPU/APU I/O. Basic controller serial reads and keyboard/touch buttons are implemented,
+ but it does NOT emulate NES PPU rendering, APU audio, DMA, IRQ timing,
 or unofficial opcodes. Extracted graphics are raw 2-bit tile indices, not game sprites.</p>
 <p id="info"></p><section><h2>CPU diagnostic</h2>
 <button id="step">Step instruction</button><button id="run">Run 1000 steps</button>
 <button id="reset">Reset CPU</button><pre id="status"></pre></section>
+<section><h2>Controller 1 (diagnostic)</h2>
+<p>Keyboard: arrows = D-pad, Z = A, X = B, Enter = Start, Shift = Select.
+Touch: hold the buttons below. The CPU reads these through $4016.</p>
+<div id="pad"><button data-pad="Up">Up</button><button data-pad="Left">Left</button>
+<button data-pad="Down">Down</button><button data-pad="Right">Right</button>
+<button data-pad="Select">Select</button><button data-pad="Start">Start</button>
+<button data-pad="B">B</button><button data-pad="A">A</button></div></section>
 <section><h2>CHR tiles</h2><p id="nochr" hidden>No CHR-ROM. CHR-RAM may be generated dynamically by the game.</p>
 <button id="prev">Previous</button><button id="next">Next</button><p id="page"></p>
 <canvas id="tiles" width="128" height="128"></canvas></section>
@@ -51,7 +60,7 @@ or unofficial opcodes. Extracted graphics are raw 2-bit tile indices, not game s
         '`nes_runtime.js` is separately testable under Node.js; `rom_payload.js` includes original PRG/CHR bytes.\n'
         'The 151 official 6502 opcodes are dispatched in a non-cycle-accurate research runtime for '
         'mappers 0, 2 and 3 only. Unsupported mappers are rejected for CPU execution. '
-        'PPU/APU/controller/timing/IRQ/unofficial opcodes are NOT implemented. '
+        'PPU/APU/timing and automatically generated interrupts are NOT implemented. External NMI/IRQ injection and basic controller serial input are diagnostic-only. '
         'ROM PRG/CHR is original embedded data; **this is not reconstructed original JS source code or playable gameplay**.\n'
         'Treat generated files containing ROM data as copyright-sensitive.\n', encoding='utf-8')
     return True

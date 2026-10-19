@@ -1,5 +1,5 @@
 /* Small CPU-only 2A03 workbench, NOT a playable NES emulator.
-   Lacks working PPU, APU, DMA, IRQ timing and controller inputs.
+   Lacks working PPU, APU, DMA and IRQ timing; controller serial I/O and external interrupt hooks are diagnostic-only.
    The real NES 2A03 ignores decimal ADC/SBC (though D flag can be set). */
 #include "nes_runtime.h"
 #include "recovered.h"
@@ -31,9 +31,34 @@ uint32_t nes_rom_offset(const NesMachine *m, uint16_t addr) {
   }
   return UINT32_MAX;
 }
+void nes_set_controller(NesMachine *m, unsigned port, uint8_t buttons) {
+  if (port >= 2) return;
+  m->controller_buttons[port] = buttons;
+  if (m->controller_strobe) {
+    m->controller_shift[port] = buttons;
+    m->controller_reads[port] = 0;
+  }
+}
+static void latch_controllers(NesMachine *m) {
+  for (unsigned i=0; i<2; i++) {
+    m->controller_shift[i] = m->controller_buttons[i];
+    m->controller_reads[i] = 0;
+  }
+}
+static uint8_t read_controller(NesMachine *m, unsigned port) {
+  if (m->controller_strobe) return m->controller_buttons[port] & 1;
+  if (m->controller_reads[port] >= 8) return 1;
+  uint8_t bit = m->controller_shift[port] & 1;
+  m->controller_shift[port] >>= 1;
+  m->controller_reads[port]++;
+  return bit;
+}
 uint8_t nes_read(NesMachine *m, uint16_t addr) {
   if (addr < 0x2000) return m->ram[addr & 0x07ff];
   if (addr < 0x4000) { m->ppu_accesses++; return 0; } /* PPU stub */
+  if (addr == 0x4016 || addr == 0x4017) {
+    m->apu_accesses++; return read_controller(m, addr-0x4016);
+  }
   if (addr < 0x4020) { m->apu_accesses++; return m->io[addr & 0x1f]; }
   if (addr >= 0x6000 && addr < 0x8000) return m->sram[addr - 0x6000];
   if (addr >= 0x8000) {
@@ -45,6 +70,13 @@ uint8_t nes_read(NesMachine *m, uint16_t addr) {
 void nes_write(NesMachine *m, uint16_t addr, uint8_t value) {
   if (addr < 0x2000) { m->ram[addr & 0x7ff] = value; return; }
   if (addr < 0x4000) { m->ppu_accesses++; return; } /* PPU stub */
+  if (addr == 0x4016) {
+    m->apu_accesses++; m->io[addr & 31] = value;
+    uint8_t previous = m->controller_strobe;
+    m->controller_strobe = value & 1;
+    if (m->controller_strobe || previous) latch_controllers(m);
+    return;
+  }
   if (addr < 0x4020) { m->apu_accesses++; m->io[addr & 31] = value; return; }
   if (addr >= 0x6000 && addr < 0x8000) { m->sram[addr - 0x6000] = value; return; }
   if (addr >= 0x8000 && NES_MAPPER == 2) m->selected_prg_bank = value;
@@ -95,6 +127,22 @@ static void flag(NesMachine *m, uint8_t mask, int cond) {
 static void nz(NesMachine *m, uint8_t v) { flag(m,F_Z,v==0);flag(m,F_N,v&0x80); }
 static void push(NesMachine *m, uint8_t value) { nes_write(m, 0x100 | m->cpu.sp--, value); }
 static uint8_t pop(NesMachine *m) { return nes_read(m, 0x100 | (uint8_t)(++m->cpu.sp)); }
+void nes_request_nmi(NesMachine *m) { m->nmi_pending = 1; }
+void nes_set_irq_line(NesMachine *m, int asserted) { m->irq_line = asserted ? 1 : 0; }
+int nes_service_interrupt(NesMachine *m) {
+  if (m->halted) return 0;
+  const int nmi = m->nmi_pending != 0;
+  if (!nmi && (!m->irq_line || (m->cpu.p & F_I))) return 0;
+  if (nmi) m->nmi_pending = 0;
+  push(m, (uint8_t)(m->cpu.pc >> 8));
+  push(m, (uint8_t)m->cpu.pc);
+  push(m, (uint8_t)((m->cpu.p & (uint8_t)~F_B) | F_U));
+  m->cpu.p = (uint8_t)((m->cpu.p | F_I | F_U) & (uint8_t)~F_B);
+  const uint16_t vector = nmi ? 0xfffa : 0xfffe;
+  m->cpu.pc = (uint16_t)(nes_read(m, vector) | ((uint16_t)nes_read(m, (uint16_t)(vector+1)) << 8));
+  m->steps++;
+  return 1;
+}
 static void cmp(NesMachine *m, uint8_t a, uint8_t b) { flag(m,F_C,a>=b);nz(m,(uint8_t)(a-b)); }
 static void adc(NesMachine *m, uint8_t v) {
   uint8_t a = m->cpu.a;

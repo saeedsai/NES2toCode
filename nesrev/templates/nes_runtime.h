@@ -23,11 +23,18 @@ typedef struct {
   NesRegisters cpu;
   uint8_t ram[2048], sram[8192], io[32];
   uint8_t selected_prg_bank, selected_chr_bank;
+  uint8_t controller_buttons[2], controller_shift[2], controller_reads[2], controller_strobe;
   uint64_t steps;
   unsigned ppu_accesses, apu_accesses;
   int halted;
+  uint8_t nmi_pending, irq_line;
 } NesMachine;
 
+void nes_set_controller(NesMachine *m, unsigned port, uint8_t buttons);
+void nes_request_nmi(NesMachine *m);
+void nes_set_irq_line(NesMachine *m, int asserted);
+/* Returns 1 when an interrupt is serviced; zero otherwise. */
+int nes_service_interrupt(NesMachine *m);
 uint32_t nes_rom_offset(const NesMachine *m, uint16_t address);
 uint8_t nes_read(NesMachine *m, uint16_t address);
 void nes_write(NesMachine *m, uint16_t address, uint8_t value);
