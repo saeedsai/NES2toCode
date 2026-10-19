@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Python and C regression tests
+    name: Python, C and JavaScript regression tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -15,11 +15,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Python automated tests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Automated Python, C and JS diagnostic tests
         run: python -m unittest discover -s tests -v
       - name: Generate synthetic NES ROM
         run: python examples/make_demo_rom.py
-      - name: Reverse engineer synthetic ROM
+      - name: Convert synthetic NES ROM
         run: python -m nesrev examples/synthetic_demo.nes --out recovered --individual-tiles
       - name: Verify byte-perfect original/reconstructed ROM
         run: cmp examples/synthetic_demo.nes recovered/reconstructed.nes
@@ -29,7 +32,11 @@ jobs:
           cc -std=c99 -O2 -Wall -Wextra -Werror recovered_data.c recovered_instructions.c lifted_code.c nes_runtime.c probe_main.c -o cpu_probe
           ./cpu_probe 20 | tee cpu_result.txt
           grep -F 'RAM[0002]=$42' cpu_result.txt
-      - name: Validate HTML is rejected
+      - name: Verify generated JavaScript CPU workbench
+        run: |
+          node -e "const p='./recovered/browser';require(p+'/rom_payload.js');const m=new (require(p+'/nes_runtime.js').Machine)(globalThis.NES_PAYLOAD);m.run(20);if(m.ram[2]!==0x42||m.a!==0x42) process.exit(1); console.log('JS CPU diagnostic parity: 0x42')"
+          grep -F 'NOT PLAYABLE' recovered/browser/index.html
+      - name: Validate HTML is rejected as a ROM input
         run: |
           printf '<!doctype html><html><body>Not a ROM</body></html>' > invalid.html
           if python -m nesrev invalid.html --out bad_output 2> bad_error.txt; then

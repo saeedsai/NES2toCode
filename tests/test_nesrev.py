@@ -157,7 +157,7 @@ class COutputTests(unittest.TestCase):
             sources = [str(cd/s) for s in ('recovered_data.c','recovered_instructions.c',
                        'lifted_code.c','nes_runtime.c','probe_main.c')]
             exe = Path(d)/'probe'
-            subprocess.run(['cc','-std=c99','-O2','-Wall','-Wextra','-Werror',
+            subprocess.run(['cc','-std=c99','-O0','-Wall','-Wextra','-Werror',
                             *sources,'-o',str(exe)], check=True, capture_output=True)
             out = subprocess.run([str(exe),str(steps)], check=True, capture_output=True, text=True).stdout
             self.assertIn(expected,out)

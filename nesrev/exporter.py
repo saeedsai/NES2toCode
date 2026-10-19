@@ -5,6 +5,7 @@ import json
 from .opcodes import OPCODES
 from .graphics import iter_tiles, sheet_png, tile_png, encode_tile
 from .disasm import Analyzer
+from .browser import export_browser
 
 
 def _write(path, data):
@@ -152,6 +153,8 @@ def export_rom(cart, output_dir, scale=2, individual_tiles=False):
            'recovered_data.c recovered_instructions.c lifted_code.c nes_runtime.c '
            'probe_main.c -o cpu_probe`\n'
            'Run: `./cpu_probe 10000`. Only use ROMs you may lawfully analyze.\n')
+
+    export_browser(cart, out/'browser')
 
     tile_count = 0
     if cart.chr:
